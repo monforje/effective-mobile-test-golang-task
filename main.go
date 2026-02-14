@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"test-task/internal/config"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 type Subscription struct {
@@ -33,6 +38,57 @@ func DateFormatting(date time.Time) string {
 	return fmt.Sprintf("%02d-%04d", int(month), year)
 }
 
+func ConnectToDatabase(cfg *config.Config) (*gorm.DB, error) {
+	dsn := fmt.Sprintf(
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=%s",
+		cfg.PostgresConfig.Host,
+		cfg.PostgresConfig.User,
+		cfg.PostgresConfig.Password,
+		cfg.PostgresConfig.Dbname,
+		cfg.PostgresConfig.Port,
+		cfg.PostgresConfig.SSLMode,
+		cfg.PostgresConfig.Timezone,
+	)
+
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+type SubscriptionRepository struct {
+	db *gorm.DB
+}
+
+func NewSubscriptionRepository(db *gorm.DB) *SubscriptionRepository {
+	return &SubscriptionRepository{db: db}
+}
+
+func (r *SubscriptionRepository) CreateSubscription(ctx context.Context, sub *Subscription) error {
+	if err := r.db.WithContext(ctx).Create(sub).Error; err != nil {
+		return fmt.Errorf("create subscription: %w", err)
+	}
+	return nil
+}
+
+func (r *SubscriptionRepository) ReadSubscriptions(ctx context.Context, subscriptionID uuid.UUID) (*Subscription, error) {
+	var sub *Subscription
+	if err := r.db.WithContext(ctx).First(&sub, subscriptionID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("read subscription: %w", err)
+		}
+		return nil, fmt.Errorf("read subscription: %w", err)
+	}
+	return sub, nil
+}
+
+func UpdateSubscription() {}
+
+func DeleteSubscription() {}
+
+func ListSubscriptions() {}
+
 func main() {
 	s := &Subscription{
 		SubscriptionID: uuid.New(),
@@ -52,4 +108,40 @@ func main() {
 		*s.EndDate,
 	)
 
+	fmt.Println()
+
+	cfg, err := config.Load("config.yaml")
+	if err != nil {
+		panic(err)
+	}
+
+	db, err := ConnectToDatabase(cfg)
+	if err != nil {
+		panic(err)
+	}
+	_ = db
+
+	err = db.AutoMigrate(&Subscription{})
+	if err != nil {
+		panic(err)
+	}
+
+	database := NewSubscriptionRepository(db)
+	err = database.CreateSubscription(context.Background(), s)
+	if err != nil {
+		panic(err)
+	}
+
+	sub, err := database.ReadSubscriptions(context.Background(), uuid.MustParse("edfae7fc-bb3f-414c-8ddd-cb105d04049d"))
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("SubscriptionID: %s\nServiceName: %s\nPrice: %d\nUserID: %s\nStartDate: %s\nEndDate: %s\n",
+		sub.SubscriptionID,
+		sub.ServiceName,
+		sub.Price,
+		sub.UserID,
+		sub.StartDate,
+		*sub.EndDate,
+	)
 }
