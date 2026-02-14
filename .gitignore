@@ -1,5 +1,10 @@
-.idea
-*.env
-*.yaml
-!*.yaml.example
+# IDE
+.idea/
+
+# env
+.env
 !.env.example
+
+# yaml (игнорим всё, кроме примеров)
+сonfig.yaml
+!*.yaml.example
